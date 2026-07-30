@@ -6,7 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-const GroupName = "WebApp"
+const GroupName = "operator.com"
 const GroupVersion = "v1"
 
 var schemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: GroupVersion}
