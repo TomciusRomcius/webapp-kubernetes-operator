@@ -6,5 +6,5 @@ spec:
   image: httpd:2.4
   ports:
   - internal: 80
-  - external: 8080
+    external: 8080
   

@@ -19,12 +19,17 @@ package controller
 import (
 	"context"
 
+	operatorv1 "webapp-kubernetes-operator/api/v1"
+
+	"github.com/samber/lo"
+	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-
-	operatorv1 "webapp-kubernetes-operator/api/v1"
 )
 
 // WebAppReconciler reconciles a WebApp object
@@ -47,11 +52,62 @@ type WebAppReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.24.1/pkg/reconcile
 func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	logger := logf.FromContext(ctx)
+	logger.Info("Reconsiling")
+	var webApp operatorv1.WebApp
+	if err := r.Get(ctx, req.NamespacedName, &webApp); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	logf.Log.Info("Hello")
+	deployment := appsv1.Deployment{}
+	deployment.Name = req.Name
+	deployment.Namespace = req.Namespace
+
+	deploymentSpec := r.buildDeploymentSpec(&webApp)
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, &deployment, func() error {
+		deployment.Spec = *deploymentSpec
+		return nil
+	})
+
+	if err != nil {
+		logger.Error(err, "failed to create or update a deployment")
+	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *WebAppReconciler) buildDeploymentSpec(webApp *operatorv1.WebApp) *appsv1.DeploymentSpec {
+	spec := appsv1.DeploymentSpec{
+		Replicas: new(int32(1)),
+		Selector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"app": webApp.Name,
+			},
+		},
+		Template: v1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"app": webApp.Name,
+				},
+			},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name:            webApp.Name,
+						Image:           webApp.Spec.Image,
+						ImagePullPolicy: v1.PullAlways,
+						Ports: lo.Map(webApp.Spec.Ports, func(port operatorv1.WebAppPortMapping, _ int) v1.ContainerPort {
+							return v1.ContainerPort{
+								HostPort:      int32(port.External),
+								ContainerPort: int32(port.Internal),
+							}
+						}),
+					},
+				},
+			},
+		},
+	}
+	return &spec
 }
 
 // SetupWithManager sets up the controller with the Manager.
