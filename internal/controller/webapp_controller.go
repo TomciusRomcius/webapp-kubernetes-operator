@@ -26,6 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -61,11 +62,48 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	err := r.ensureDeployment(ctx, req, webApp)
 	if err != nil {
-		logger.Error(err, "failed to create or update a deployment")
+		logger.Error(err, "failed to create or update the deployment")
+		return ctrl.Result{}, err
+	}
+
+	err = r.ensureService(ctx, webApp)
+	if err != nil {
+		logger.Error(err, "failed to create or update the service")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *WebAppReconciler) ensureService(ctx context.Context, webApp operatorv1.WebApp) error {
+	service := v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      webApp.Name,
+			Namespace: webApp.Namespace,
+		},
+	}
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, &service, func() error {
+		service.Spec = *buildServiceSpec(webApp)
+		return nil
+	})
+
+	return err
+}
+
+func buildServiceSpec(webApp operatorv1.WebApp) *v1.ServiceSpec {
+	return &v1.ServiceSpec{
+		Selector: map[string]string{
+			"app": webApp.Name,
+		},
+		// TODO: names for ports
+		Ports: lo.Map(webApp.Spec.Ports, func(port operatorv1.WebAppPortMapping, _ int) v1.ServicePort {
+			return v1.ServicePort{
+				Port:       int32(port.External),
+				TargetPort: intstr.FromInt32(port.Internal),
+			}
+		}),
+	}
 }
 
 func (r *WebAppReconciler) ensureDeployment(ctx context.Context, req ctrl.Request, webApp operatorv1.WebApp) error {

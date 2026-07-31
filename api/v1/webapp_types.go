@@ -6,8 +6,8 @@ import (
 )
 
 type WebAppPortMapping struct {
-	Internal int64 `json:"internal"`
-	External int64 `json:"external"`
+	Internal int32 `json:"internal"`
+	External int32 `json:"external"`
 }
 
 type WebAppSpec struct {
