@@ -24,9 +24,9 @@ type WebAppReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=operator.operator.com,resources=webapps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=operator.operator.com,resources=webapps/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=operator.operator.com,resources=webapps/finalizers,verbs=update
+// +kubebuilder:rbac:groups=operator.com,resources=webapps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=operator.com,resources=webapps/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=operator.com,resources=webapps/finalizers,verbs=update
 
 func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
