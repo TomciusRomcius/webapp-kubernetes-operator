@@ -59,25 +59,30 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	err := r.ensureDeployment(ctx, req, webApp)
+	if err != nil {
+		logger.Error(err, "failed to create or update a deployment")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *WebAppReconciler) ensureDeployment(ctx context.Context, req ctrl.Request, webApp operatorv1.WebApp) error {
 	deployment := appsv1.Deployment{}
 	deployment.Name = req.Name
 	deployment.Namespace = req.Namespace
 
 	deploymentSpec := r.buildDeploymentSpec(&webApp)
 	if err := controllerutil.SetControllerReference(&webApp, &deployment, r.Scheme); err != nil {
-		logger.Error(err, "failed to set the controller reference of the deployment")
-		return ctrl.Result{}, err
+		return err
 	}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, &deployment, func() error {
 		deployment.Spec = *deploymentSpec
 		return nil
 	})
 
-	if err != nil {
-		logger.Error(err, "failed to create or update a deployment")
-	}
-
-	return ctrl.Result{}, nil
+	return err
 }
 
 func (r *WebAppReconciler) buildDeploymentSpec(webApp *operatorv1.WebApp) *appsv1.DeploymentSpec {
