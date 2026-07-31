@@ -24,6 +24,7 @@ import (
 	"github.com/samber/lo"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -63,16 +64,34 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := r.ensureDeployment(ctx, req, webApp)
 	if err != nil {
 		logger.Error(err, "failed to create or update the deployment")
+		setErrorStatus(webApp, err)
 		return ctrl.Result{}, err
 	}
 
 	err = r.ensureService(ctx, webApp)
 	if err != nil {
 		logger.Error(err, "failed to create or update the service")
+		setErrorStatus(webApp, err)
 		return ctrl.Result{}, err
 	}
 
+	meta.SetStatusCondition(&webApp.Status.Conditions, metav1.Condition{
+		Type:    "Ready",
+		Status:  metav1.ConditionTrue,
+		Reason:  "ReconsileSuccess",
+		Message: "WebApp is ready",
+	})
+
 	return ctrl.Result{}, nil
+}
+
+func setErrorStatus(webApp operatorv1.WebApp, err error) {
+	meta.SetStatusCondition(&webApp.Status.Conditions, metav1.Condition{
+		Type:    "Ready",
+		Status:  metav1.ConditionFalse,
+		Reason:  "DeploymentFailed",
+		Message: err.Error(),
+	})
 }
 
 func (r *WebAppReconciler) ensureService(ctx context.Context, webApp operatorv1.WebApp) error {
