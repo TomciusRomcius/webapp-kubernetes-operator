@@ -64,6 +64,10 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	deployment.Namespace = req.Namespace
 
 	deploymentSpec := r.buildDeploymentSpec(&webApp)
+	if err := controllerutil.SetControllerReference(&webApp, &deployment, r.Scheme); err != nil {
+		logger.Error(err, "failed to set the controller reference of the deployment")
+		return ctrl.Result{}, err
+	}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, &deployment, func() error {
 		deployment.Spec = *deploymentSpec
 		return nil
