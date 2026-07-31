@@ -2,10 +2,15 @@ package controller
 
 import (
 	"context"
+	"os"
 
 	operatorv1 "webapp-kubernetes-operator/api/v1"
 
 	"github.com/samber/lo"
+	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/chart/loader"
+	"helm.sh/helm/v4/pkg/cli"
+	"helm.sh/helm/v4/pkg/release"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -24,9 +29,36 @@ type WebAppReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=operator.com,resources=webapps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=operator.com,resources=webapps/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=operator.com,resources=webapps/finalizers,verbs=update
+type InstallActionConfig struct {
+	ReleaseName string
+	Namespace   string
+	Version     string
+}
+
+func createActionConfig() *action.Configuration {
+	settings := cli.New()
+	actionConfig := new(action.Configuration)
+	if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), os.Getenv("HELM_DRIVER")); err != nil {
+		panic(err)
+	}
+	return actionConfig
+}
+
+var actionConfig = createActionConfig()
+
+func installChart(actionConfig *action.Configuration, installActionConfig *InstallActionConfig, values map[string]any) (release.Releaser, error) {
+	installAction := action.NewInstall(actionConfig)
+	chart, err := loader.Load("https://traefik.github.io/charts/traefik")
+	if err != nil {
+		return nil, err
+	}
+	installAction.ReleaseName = installActionConfig.ReleaseName
+	release, err := installAction.Run(chart, values)
+	if err != nil {
+		return nil, err
+	}
+	return release, nil
+}
 
 func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := logf.FromContext(ctx)
