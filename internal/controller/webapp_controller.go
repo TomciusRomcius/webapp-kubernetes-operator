@@ -2,15 +2,11 @@ package controller
 
 import (
 	"context"
-	"os"
 
 	operatorv1 "webapp-kubernetes-operator/api/v1"
+	"webapp-kubernetes-operator/internal/helm"
 
 	"github.com/samber/lo"
-	"helm.sh/helm/v4/pkg/action"
-	"helm.sh/helm/v4/pkg/chart/loader"
-	"helm.sh/helm/v4/pkg/cli"
-	"helm.sh/helm/v4/pkg/release"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -23,41 +19,18 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	traefikReleaseName = "traefik"
+	traefikNamespace   = "traefik"
+	traefikChartName   = "traefik"
+	traefikRepoURL     = "https://traefik.github.io/charts"
+)
+
 // WebAppReconciler reconciles a WebApp object
 type WebAppReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-}
-
-type InstallActionConfig struct {
-	ReleaseName string
-	Namespace   string
-	Version     string
-}
-
-func createActionConfig() *action.Configuration {
-	settings := cli.New()
-	actionConfig := new(action.Configuration)
-	if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), os.Getenv("HELM_DRIVER")); err != nil {
-		panic(err)
-	}
-	return actionConfig
-}
-
-var actionConfig = createActionConfig()
-
-func installChart(actionConfig *action.Configuration, installActionConfig *InstallActionConfig, values map[string]any) (release.Releaser, error) {
-	installAction := action.NewInstall(actionConfig)
-	chart, err := loader.Load("https://traefik.github.io/charts/traefik")
-	if err != nil {
-		return nil, err
-	}
-	installAction.ReleaseName = installActionConfig.ReleaseName
-	release, err := installAction.Run(chart, values)
-	if err != nil {
-		return nil, err
-	}
-	return release, nil
+	Scheme     *runtime.Scheme
+	HelmClient helm.HelmClient
 }
 
 func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -68,7 +41,14 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	err := r.ensureDeployment(ctx, req, webApp)
+	err := r.ensureTraefik(ctx, r.Client)
+	if err != nil {
+		logger.Error(err, "failed to install or upgrade Traefik")
+		setErrorStatus(webApp, err)
+		return ctrl.Result{}, err
+	}
+
+	err = r.ensureDeployment(ctx, req, webApp)
 	if err != nil {
 		logger.Error(err, "failed to create or update the deployment")
 		setErrorStatus(webApp, err)
@@ -99,6 +79,22 @@ func setErrorStatus(webApp operatorv1.WebApp, err error) {
 		Reason:  "DeploymentFailed",
 		Message: err.Error(),
 	})
+}
+
+func (r *WebAppReconciler) ensureTraefik(ctx context.Context, client client.Client) error {
+	logger := logf.FromContext(ctx)
+	logger.Info("Found WebApp resources", "count", len(webappList.Items))
+	_, err := r.HelmClient.InstallOrUpgradeChart(&helm.ChartActionConfig{
+		ReleaseName: traefikReleaseName,
+		Namespace:   traefikNamespace,
+		ChartName:   traefikChartName,
+		RepoURL:     traefikRepoURL,
+	}, map[string]any{})
+	if err != nil {
+		return err
+	}
+	logger.Info("Ensured Traefik chart", "release", traefikReleaseName, "namespace", traefikNamespace)
+	return nil
 }
 
 func (r *WebAppReconciler) ensureService(ctx context.Context, webApp operatorv1.WebApp) error {

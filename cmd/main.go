@@ -37,6 +37,7 @@ import (
 
 	operatorv1 "webapp-kubernetes-operator/api/v1"
 	"webapp-kubernetes-operator/internal/controller"
+	"webapp-kubernetes-operator/internal/helm"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -177,10 +178,10 @@ func main() {
 		setupLog.Error(err, "Failed to start manager")
 		os.Exit(1)
 	}
-
 	if err := (&controller.WebAppReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		HelmClient: helm.HelmClient{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "webapp")
 		os.Exit(1)
