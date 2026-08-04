@@ -26,7 +26,7 @@ type WebApp struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 	Spec              WebAppSpec   `json:"spec"`
-	Status            WebAppStatus `json:"status,omitzero"`
+	Status            WebAppStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

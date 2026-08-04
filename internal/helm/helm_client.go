@@ -111,6 +111,7 @@ func (h *HelmClient) InstallOrUpgradeChart(cfg *ChartActionConfig, values map[st
 	upgradeAction := action.NewUpgrade(actionConfig)
 	upgradeAction.ChartPathOptions = chartPathOptions
 	upgradeAction.Namespace = cfg.Namespace
+	upgradeAction.WaitStrategy = "watcher"
 	rel, err := upgradeAction.Run(cfg.ReleaseName, chrt, values)
 	if err != nil {
 		return nil, fmt.Errorf("failed to upgrade release %q: %w", cfg.ReleaseName, err)

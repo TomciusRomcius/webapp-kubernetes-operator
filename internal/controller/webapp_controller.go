@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	operatorv1 "webapp-kubernetes-operator/api/v1"
 	"webapp-kubernetes-operator/internal/helm"
@@ -11,7 +13,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -44,6 +48,12 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := r.ensureTraefik(ctx, r.Client)
 	if err != nil {
 		logger.Error(err, "failed to install or upgrade Traefik")
+		setErrorStatus(webApp, err)
+		return ctrl.Result{}, err
+	}
+
+	if err = r.ensureIngressRoute(ctx, webApp); err != nil {
+		logger.Error(err, "failed to create or update the IngressRoute")
 		setErrorStatus(webApp, err)
 		return ctrl.Result{}, err
 	}
@@ -83,7 +93,6 @@ func setErrorStatus(webApp operatorv1.WebApp, err error) {
 
 func (r *WebAppReconciler) ensureTraefik(ctx context.Context, client client.Client) error {
 	logger := logf.FromContext(ctx)
-	logger.Info("Found WebApp resources", "count", len(webappList.Items))
 	_, err := r.HelmClient.InstallOrUpgradeChart(&helm.ChartActionConfig{
 		ReleaseName: traefikReleaseName,
 		Namespace:   traefikNamespace,
@@ -94,6 +103,47 @@ func (r *WebAppReconciler) ensureTraefik(ctx context.Context, client client.Clie
 		return err
 	}
 	logger.Info("Ensured Traefik chart", "release", traefikReleaseName, "namespace", traefikNamespace)
+	return nil
+}
+
+func (r *WebAppReconciler) ensureIngressRoute(ctx context.Context, webApp operatorv1.WebApp) error {
+	logger := logf.FromContext(ctx)
+	logger.Info("Ensuring IngressRoute")
+	ir := unstructured.Unstructured{}
+	ir.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "traefik.io",
+		Version: "v1alpha1",
+		Kind:    "IngressRoute",
+	})
+	ir.SetName(fmt.Sprintf("%s-ingressroute", webApp.Name))
+	ir.SetNamespace(webApp.Namespace)
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, &ir, func() error {
+		ir.Object["spec"] = map[string]any{
+			// TODO: make this configurable
+			"ingressClassName": "traefik",
+			"routes": []map[string]any{
+				{
+					"kind": "Rule",
+					// TODO: make this configurable
+					"match": fmt.Sprintf("Host(`%s`)", strings.ToLower(webApp.Name)+".com"),
+					"services": []map[string]any{
+						{
+							"kind":      "Service",
+							"namespace": webApp.Namespace,
+							"name":      webApp.Name,
+							"port":      webApp.Spec.Ports[0].External,
+						},
+					},
+				},
+			},
+		}
+		return nil
+	})
+	if err != nil {
+		logger.Error(err, "failed to create or update IngressRoute")
+		return err
+	}
+	logger.Info("IngressRoute ensured")
 	return nil
 }
 

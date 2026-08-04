@@ -43,10 +43,10 @@ spec:
                 items:
                   properties:
                     external:
-                      format: int64
+                      format: int32
                       type: integer
                     internal:
-                      format: int64
+                      format: int32
                       type: integer
                   required:
                   - external
@@ -119,7 +119,6 @@ spec:
         required:
         - metadata
         - spec
-        - status
         type: object
     served: true
     storage: true
