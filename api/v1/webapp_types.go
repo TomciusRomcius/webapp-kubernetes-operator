@@ -11,8 +11,10 @@ type WebAppPortMapping struct {
 }
 
 type WebAppSpec struct {
-	Image string              `json:"image"`
-	Ports []WebAppPortMapping `json:"ports"`
+	Image      string              `json:"image"`
+	Ports      []WebAppPortMapping `json:"ports"`
+	ConfigMaps []string            `json:"configMaps"`
+	Secrets    []string            `json:"secrets"`
 }
 
 type WebAppStatus struct {

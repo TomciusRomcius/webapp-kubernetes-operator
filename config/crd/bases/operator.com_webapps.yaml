@@ -37,6 +37,10 @@ spec:
             type: object
           spec:
             properties:
+              configMaps:
+                items:
+                  type: string
+                type: array
               image:
                 type: string
               ports:
@@ -53,9 +57,15 @@ spec:
                   - internal
                   type: object
                 type: array
+              secrets:
+                items:
+                  type: string
+                type: array
             required:
+            - configMaps
             - image
             - ports
+            - secrets
             type: object
           status:
             properties:

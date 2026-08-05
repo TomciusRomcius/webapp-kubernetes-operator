@@ -1,3 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: httpd-config
+data:
+  key: value
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: httpd-secrets
+type: Opaque
+data:
+  dbusername: aHR0cGR1c2Vy
+  dbpassword: cGFzc3dvcmQ=
+---
 apiVersion: operator.com/v1
 kind: WebApp
 metadata:
@@ -7,4 +23,7 @@ spec:
   ports:
   - internal: 80
     external: 8080
-  
+  configMaps:
+    - httpd-config
+  secrets:
+    - httpd-secrets

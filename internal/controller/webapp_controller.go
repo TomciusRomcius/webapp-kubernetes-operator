@@ -11,8 +11,8 @@ import (
 	"github.com/samber/lo"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -258,6 +258,7 @@ func (r *WebAppReconciler) buildDeploymentSpec(webApp *operatorv1.WebApp) *appsv
 				Containers: []v1.Container{
 					{
 						Name:            webApp.Name,
+						EnvFrom:         generateEnvFromSources(webApp),
 						Image:           webApp.Spec.Image,
 						ImagePullPolicy: v1.PullAlways,
 						Ports: lo.Map(webApp.Spec.Ports, func(port operatorv1.WebAppPortMapping, _ int) v1.ContainerPort {
@@ -272,6 +273,29 @@ func (r *WebAppReconciler) buildDeploymentSpec(webApp *operatorv1.WebApp) *appsv
 		},
 	}
 	return &spec
+}
+
+func generateEnvFromSources(webApp *operatorv1.WebApp) []v1.EnvFromSource {
+	sources := []v1.EnvFromSource{}
+	for _, cfgm := range webApp.Spec.ConfigMaps {
+		sources = append(sources, v1.EnvFromSource{
+			ConfigMapRef: &v1.ConfigMapEnvSource{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: cfgm,
+				},
+			},
+		})
+	}
+	for _, secr := range webApp.Spec.Secrets {
+		sources = append(sources, v1.EnvFromSource{
+			SecretRef: &v1.SecretEnvSource{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: secr,
+				},
+			},
+		})
+	}
+	return sources
 }
 
 // SetupWithManager sets up the controller with the Manager.
