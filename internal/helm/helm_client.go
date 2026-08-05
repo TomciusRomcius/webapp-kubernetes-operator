@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"helm.sh/helm/v4/pkg/release"
 	"helm.sh/helm/v4/pkg/release/common"
 	"helm.sh/helm/v4/pkg/storage/driver"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type HelmClient struct {
@@ -46,6 +48,23 @@ func (h *HelmClient) chartVersion(chrt any) string {
 		}
 	}
 	return ""
+}
+
+func (h *HelmClient) UninstallChart(ctx context.Context, releaseName string, namespace string) error {
+	logger := logf.FromContext(ctx)
+	logger.Info("uninstalling a chart", "releaseName", releaseName, "namespace", namespace)
+	actionConfig, _, err := h.newActionConfig(namespace)
+	if err != nil {
+		return err
+	}
+	uninstallAction := action.NewUninstall(actionConfig)
+	uninstallAction.WaitStrategy = "watcher"
+	if _, err := uninstallAction.Run(releaseName); err != nil {
+		logger.Error(err, "failed to uninstall the chart", "releaseName", releaseName, "namespace", namespace)
+		return err
+	}
+	logger.Info("successfully uninstalled the chart", "releaseName", releaseName, "namespace", namespace)
+	return nil
 }
 
 func (h *HelmClient) InstallOrUpgradeChart(cfg *ChartActionConfig, values map[string]any) (release.Releaser, error) {

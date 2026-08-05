@@ -12,6 +12,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -41,6 +42,7 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	logger := logf.FromContext(ctx)
 	logger.Info("Reconsiling")
 	var webApp operatorv1.WebApp
+	r.tryTraefikCleanup(ctx, r.Client)
 	if err := r.Get(ctx, req.NamespacedName, &webApp); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -89,6 +91,46 @@ func setErrorStatus(webApp operatorv1.WebApp, err error) {
 		Reason:  "DeploymentFailed",
 		Message: err.Error(),
 	})
+}
+
+func (r *WebAppReconciler) tryTraefikCleanup(ctx context.Context, client client.Client) error {
+	logger := logf.FromContext(ctx)
+	webApps := operatorv1.WebAppList{}
+	err := client.List(ctx, &webApps)
+	if err != nil {
+		return err
+	}
+	numOfWebApps := len(webApps.Items)
+	if numOfWebApps == 0 {
+		if err := r.HelmClient.UninstallChart(ctx, traefikReleaseName, traefikNamespace); err != nil {
+			return err
+		}
+		traefikCrds := strings.Split(Crds, "\n")
+		for _, crd := range traefikCrds {
+			crd = strings.TrimSpace(crd)
+			if crd == "" {
+				continue
+			}
+			u := unstructured.Unstructured{}
+			u.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   "apiextensions.k8s.io",
+				Version: "v1",
+				Kind:    "CustomResourceDefinition",
+			})
+			u.SetName(crd)
+			if err := client.Delete(ctx, &u); err != nil {
+				if apierrors.IsNotFound(err) {
+					continue
+				}
+				logger.Error(err, "failed to delete CRD", "crd", crd)
+				return err
+			}
+			logger.Info("Deleted CRD", "crd", crd)
+		}
+		return nil
+	}
+	logger.Info("Retrieved number of web apps", "Webapps", numOfWebApps)
+	return nil
 }
 
 func (r *WebAppReconciler) ensureTraefik(ctx context.Context, client client.Client) error {
@@ -143,6 +185,8 @@ func (r *WebAppReconciler) ensureIngressRoute(ctx context.Context, webApp operat
 		logger.Error(err, "failed to create or update IngressRoute")
 		return err
 	}
+
+	controllerutil.SetControllerReference(&webApp, &ir, r.Scheme)
 	logger.Info("IngressRoute ensured")
 	return nil
 }
@@ -160,6 +204,7 @@ func (r *WebAppReconciler) ensureService(ctx context.Context, webApp operatorv1.
 		return nil
 	})
 
+	controllerutil.SetControllerReference(&webApp, &service, r.Scheme)
 	return err
 }
 
